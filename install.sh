@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# Fast install of the GrokTerm CLI from the *releases* repo (binaries only).
+# Fast install of the GrokTerm CLI from the public releases repo (binaries only).
 #
-# Source is private. Binaries live in daniel-farina/grokterm-releases.
-#
-#   export GITHUB_TOKEN=ghp_...   # required while releases repo is private
-#   curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-#     https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
 #
 # Env:
-#   GROKTERM_VERSION   pin a release tag (default: latest)
+#   GROKTERM_VERSION   pin a release tag (default: latest), e.g. v0.1.5
 #   GROKTERM_INSTALL   install dir (default: ~/.local/bin)
 #   GROKTERM_REPO      owner/repo (default: daniel-farina/grokterm-releases)
-#   GITHUB_TOKEN / GH_TOKEN  required for private releases repo
+#   GITHUB_TOKEN / GH_TOKEN  optional (higher rate limits)
 set -euo pipefail
 
 REPO="${GROKTERM_REPO:-daniel-farina/grokterm-releases}"
@@ -53,8 +49,6 @@ TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 auth_header=()
 if [[ -n "$TOKEN" ]]; then
   auth_header=(-H "Authorization: Bearer ${TOKEN}")
-else
-  echo "warning: GITHUB_TOKEN/GH_TOKEN unset — private releases require a token" >&2
 fi
 
 api="https://api.github.com/repos/${REPO}/releases"
@@ -64,7 +58,6 @@ if [[ "$VERSION" == "latest" ]]; then
     -H "User-Agent: GrokTerm-install" \
     "${api}/latest")"
 else
-  # Accept v0.1.4 or 0.1.4
   tag="$VERSION"
   [[ "$tag" == v* ]] || tag="v${tag}"
   release_json="$(curl -fsSL "${auth_header[@]}" \
@@ -73,8 +66,6 @@ else
     "${api}/tags/${tag}")"
 fi
 
-# Prefer a prebuilt CLI tarball: grokterm-<ver>-<target>.tar.gz
-# For private repos, use the API asset URL (needs Accept: application/octet-stream).
 read -r asset_id asset_name asset_url < <(printf '%s' "$release_json" | python3 -c "
 import json,sys
 data=json.load(sys.stdin)
@@ -92,22 +83,23 @@ if not chosen:
             chosen=a; break
 if not chosen:
     sys.exit(1)
-print(chosen.get('id',''), chosen.get('name',''), chosen.get('url') or chosen.get('browser_download_url',''))
+print(chosen.get('id',''), chosen.get('name',''), chosen.get('browser_download_url') or chosen.get('url',''))
 " 2>/dev/null || true)
 
 tmpdir="$(mktemp -d)"
 cleanup() { rm -rf "$tmpdir"; }
 trap cleanup EXIT
 
-if [[ -z "${asset_id:-}" && -z "${asset_url:-}" ]]; then
+if [[ -z "${asset_url:-}" && -z "${asset_id:-}" ]]; then
   echo "error: no prebuilt CLI tarball for ${TARGET} in ${REPO} releases" >&2
-  echo "       (source is private — binaries only from grokterm-releases)" >&2
   exit 1
 fi
 
 echo "==> Downloading GrokTerm CLI (${TARGET}) from ${REPO}…"
-# API asset endpoint works for private repos with a token.
-if [[ -n "${asset_id:-}" && "$asset_id" != "None" ]]; then
+# Prefer public browser download URL; fall back to API asset endpoint.
+if [[ -n "${asset_url:-}" && "$asset_url" == https://github.com/* ]]; then
+  curl -fsSL "${auth_header[@]}" -L -o "$tmpdir/grokterm.tgz" "$asset_url"
+elif [[ -n "${asset_id:-}" && "$asset_id" != "None" ]]; then
   curl -fsSL "${auth_header[@]}" \
     -H "Accept: application/octet-stream" \
     -H "User-Agent: GrokTerm-install" \
@@ -142,7 +134,7 @@ esac
 
 echo ""
 echo "GrokTerm — created by Daniel Farina · https://x.com/daniel_farinax"
-echo "Binaries: https://github.com/${REPO}/releases"
+echo "Releases: https://github.com/${REPO}/releases"
 echo "Run:  grokterm"
 echo "      grokterm --voice"
 echo "      grokterm --grok"

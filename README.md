@@ -1,6 +1,6 @@
 # GrokTerm Releases
 
-**Binaries only.** Application source is private and not open source.
+**Binaries only.** Application source is not published in this repository.
 
 | Asset | Notes |
 |-------|--------|
@@ -10,29 +10,21 @@
 
 ## Install CLI with curl
 
-Private repo — you need a GitHub token with **Contents: Read** on this repo.
-
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
-
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
 ```
 
 Installs to `~/.local/bin`. Optional env:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `GROKTERM_VERSION` | `latest` | e.g. `v0.1.4` |
+| `GROKTERM_VERSION` | `latest` | e.g. `v0.1.5` |
 | `GROKTERM_INSTALL` | `~/.local/bin` | install directory |
-| `GITHUB_TOKEN` / `GH_TOKEN` | — | required for private downloads |
 
 ```bash
 # Pin version
-export GITHUB_TOKEN=ghp_...
-export GROKTERM_VERSION=v0.1.4
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
+export GROKTERM_VERSION=v0.1.5
+curl -fsSL https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
 
 # PATH (zsh)
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
