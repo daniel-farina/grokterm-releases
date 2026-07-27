@@ -46,21 +46,27 @@ need mktemp
 need python3
 
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-auth_header=()
-if [[ -n "$TOKEN" ]]; then
-  auth_header=(-H "Authorization: Bearer ${TOKEN}")
-fi
+
+# Portable curl wrapper: empty-array "${arr[@]}" fails under `set -u` on
+# bash 3.2 (macOS /bin/bash) and some bash 4/5 configs.
+gh_curl() {
+  if [[ -n "$TOKEN" ]]; then
+    curl -fsSL -H "Authorization: Bearer ${TOKEN}" "$@"
+  else
+    curl -fsSL "$@"
+  fi
+}
 
 api="https://api.github.com/repos/${REPO}/releases"
 if [[ "$VERSION" == "latest" ]]; then
-  release_json="$(curl -fsSL "${auth_header[@]}" \
+  release_json="$(gh_curl \
     -H "Accept: application/vnd.github+json" \
     -H "User-Agent: GrokTerm-install" \
     "${api}/latest")"
 else
   tag="$VERSION"
   [[ "$tag" == v* ]] || tag="v${tag}"
-  release_json="$(curl -fsSL "${auth_header[@]}" \
+  release_json="$(gh_curl \
     -H "Accept: application/vnd.github+json" \
     -H "User-Agent: GrokTerm-install" \
     "${api}/tags/${tag}")"
@@ -98,16 +104,16 @@ fi
 echo "==> Downloading GrokTerm CLI (${TARGET}) from ${REPO}…"
 # Prefer public browser download URL; fall back to API asset endpoint.
 if [[ -n "${asset_url:-}" && "$asset_url" == https://github.com/* ]]; then
-  curl -fsSL "${auth_header[@]}" -L -o "$tmpdir/grokterm.tgz" "$asset_url"
+  gh_curl -L -o "$tmpdir/grokterm.tgz" "$asset_url"
 elif [[ -n "${asset_id:-}" && "$asset_id" != "None" ]]; then
-  curl -fsSL "${auth_header[@]}" \
+  gh_curl \
     -H "Accept: application/octet-stream" \
     -H "User-Agent: GrokTerm-install" \
     -L \
     -o "$tmpdir/grokterm.tgz" \
     "https://api.github.com/repos/${REPO}/releases/assets/${asset_id}"
 else
-  curl -fsSL "${auth_header[@]}" -L -o "$tmpdir/grokterm.tgz" "$asset_url"
+  gh_curl -L -o "$tmpdir/grokterm.tgz" "$asset_url"
 fi
 
 tar -xzf "$tmpdir/grokterm.tgz" -C "$tmpdir"
