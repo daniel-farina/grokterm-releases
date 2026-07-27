@@ -144,4 +144,3 @@ echo "Releases: https://github.com/${REPO}/releases"
 echo "Run:  grokterm"
 echo "      grokterm --voice"
 echo "      grokterm --grok"
-
