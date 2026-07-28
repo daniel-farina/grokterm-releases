@@ -18,12 +18,12 @@ Installs to `~/.local/bin`. Optional env:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `GROKTERM_VERSION` | `latest` | e.g. `v0.1.5` |
+| `GROKTERM_VERSION` | `latest` | e.g. `v0.1.9` |
 | `GROKTERM_INSTALL` | `~/.local/bin` | install directory |
 
 ```bash
 # Pin version
-export GROKTERM_VERSION=v0.1.5
+export GROKTERM_VERSION=v0.1.9
 curl -fsSL https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
 
 # PATH (zsh)
