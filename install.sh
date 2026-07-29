@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/daniel-farina/grokterm-releases/main/install.sh | bash
 #
 # Env:
-#   GROKTERM_VERSION   pin a release tag (default: latest), e.g. v0.1.5
+#   GROKTERM_VERSION   pin a release tag (default: latest), e.g. v0.1.16
 #   GROKTERM_INSTALL   install dir (default: ~/.local/bin)
 #   GROKTERM_REPO      owner/repo (default: daniel-farina/grokterm-releases)
 #   GITHUB_TOKEN / GH_TOKEN  optional (higher rate limits)
@@ -47,8 +47,6 @@ need python3
 
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 
-# Portable curl wrapper: empty-array "${arr[@]}" fails under `set -u` on
-# bash 3.2 (macOS /bin/bash) and some bash 4/5 configs.
 gh_curl() {
   if [[ -n "$TOKEN" ]]; then
     curl -fsSL -H "Authorization: Bearer ${TOKEN}" "$@"
@@ -72,37 +70,46 @@ else
     "${api}/tags/${tag}")"
 fi
 
-read -r asset_id asset_name asset_url < <(printf '%s' "$release_json" | python3 -c "
-import json,sys
-data=json.load(sys.stdin)
-assets=data.get('assets') or []
-target='${TARGET}'
-chosen=None
+# Exact triple only — never fall back to another OS (e.g. apple-darwin on Linux).
+choose_out="$(printf '%s' "$release_json" | TARGET="$TARGET" python3 -c '
+import json, os, sys
+data = json.load(sys.stdin)
+assets = data.get("assets") or []
+target = os.environ["TARGET"]
+suffix = "-" + target + ".tar.gz"
+available = []
+chosen = None
 for a in assets:
-    n=a.get('name','')
-    if n.endswith(target + '.tar.gz') and n.startswith('grokterm-'):
-        chosen=a; break
+    n = a.get("name") or ""
+    if n.endswith(".tar.gz") and n.startswith("grokterm-"):
+        available.append(n)
+    if n.endswith(suffix) and n.startswith("grokterm-"):
+        chosen = a
+        break
 if not chosen:
-    for a in assets:
-        n=a.get('name','')
-        if 'grokterm' in n and n.endswith('.tar.gz') and target.split('-')[0] in n:
-            chosen=a; break
-if not chosen:
+    print("error: no asset ending with " + suffix, file=sys.stderr)
+    print("available grokterm tarballs:", file=sys.stderr)
+    for n in available or ["(none)"]:
+        print("  " + n, file=sys.stderr)
+    print("See https://github.com/daniel-farina/grokterm-releases/releases", file=sys.stderr)
     sys.exit(1)
-print(chosen.get('id',''), chosen.get('name',''), chosen.get('browser_download_url') or chosen.get('url',''))
-" 2>/dev/null || true)
+print(
+    chosen.get("id", ""),
+    chosen.get("name", ""),
+    chosen.get("browser_download_url") or chosen.get("url", ""),
+)
+')" || {
+  echo "error: failed to select CLI asset for ${TARGET}" >&2
+  exit 1
+}
+
+read -r asset_id asset_name asset_url <<<"$choose_out"
 
 tmpdir="$(mktemp -d)"
 cleanup() { rm -rf "$tmpdir"; }
 trap cleanup EXIT
 
-if [[ -z "${asset_url:-}" && -z "${asset_id:-}" ]]; then
-  echo "error: no prebuilt CLI tarball for ${TARGET} in ${REPO} releases" >&2
-  exit 1
-fi
-
-echo "==> Downloading GrokTerm CLI (${TARGET}) from ${REPO}…"
-# Prefer public browser download URL; fall back to API asset endpoint.
+echo "==> Downloading ${asset_name} (${TARGET}) from ${REPO}…"
 if [[ -n "${asset_url:-}" && "$asset_url" == https://github.com/* ]]; then
   gh_curl -L -o "$tmpdir/grokterm.tgz" "$asset_url"
 elif [[ -n "${asset_id:-}" && "$asset_id" != "None" ]]; then
@@ -113,7 +120,8 @@ elif [[ -n "${asset_id:-}" && "$asset_id" != "None" ]]; then
     -o "$tmpdir/grokterm.tgz" \
     "https://api.github.com/repos/${REPO}/releases/assets/${asset_id}"
 else
-  gh_curl -L -o "$tmpdir/grokterm.tgz" "$asset_url"
+  echo "error: no download URL for ${asset_name}" >&2
+  exit 1
 fi
 
 tar -xzf "$tmpdir/grokterm.tgz" -C "$tmpdir"
@@ -123,11 +131,35 @@ if [[ -z "$bin" ]]; then
   exit 1
 fi
 
+# Sanity: refuse wrong OS binary formats.
+if command -v file >/dev/null 2>&1; then
+  ft="$(file -b "$bin" || true)"
+  case "$OS" in
+    linux)
+      if echo "$ft" | grep -qiE 'Mach-O|Darwin'; then
+        echo "error: downloaded a macOS binary on Linux (${ft})" >&2
+        echo "  asset was: ${asset_name}" >&2
+        exit 1
+      fi
+      ;;
+    darwin)
+      if echo "$ft" | grep -qiE 'ELF|Linux'; then
+        echo "error: downloaded a Linux binary on macOS (${ft})" >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
+
 mkdir -p "$INSTALL_DIR"
 install -m 755 "$bin" "$INSTALL_DIR/grokterm"
 
 echo "==> Installed: $INSTALL_DIR/grokterm"
-"$INSTALL_DIR/grokterm" --version 2>/dev/null || true
+if ! "$INSTALL_DIR/grokterm" --version; then
+  echo "error: installed binary failed to run (wrong arch/OS?)" >&2
+  file "$INSTALL_DIR/grokterm" 2>/dev/null || true
+  exit 1
+fi
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
